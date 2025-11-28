@@ -1,21 +1,42 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-import os, uuid, shutil
+import os
+import uuid
+import requests
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
 from .pipeline import process_document
+from .schema import ReportResponse
 
-app = FastAPI(title='BFHL Datathon Extractor')
+app = FastAPI(title="Bill Extraction API")
 
-@app.post('/extract')
-async def extract(file: UploadFile = File(...)):
-    tmp_dir = '/tmp/bfhl'
+class InputSchema(BaseModel):
+    document: str
+
+@app.post("/extract-bill-data", response_model=ReportResponse)
+async def extract_bill_data(payload: InputSchema):
+
+    url = payload.document
+
+    # Create temp directory
+    tmp_dir = "/tmp/bfhl"
     os.makedirs(tmp_dir, exist_ok=True)
-    file_id = str(uuid.uuid4())
-    file_path = os.path.join(tmp_dir, file_id + '_' + file.filename)
+
+    # Temporary file path
+    file_path = os.path.join(tmp_dir, str(uuid.uuid4()) + ".pdf")
+
+    # Step 1: Download the file
     try:
-        with open(file_path, 'wb') as f:
-            content = await file.read()
-            f.write(content)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        response = requests.get(url)
+        if response.status_code != 200:
+            raise Exception("URL did not return file")
+
+        with open(file_path, "wb") as f:
+            f.write(response.content)
+
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid document URL")
+
+    # Step 2: Run pipeline
     result = process_document(file_path)
-    return JSONResponse(result)
+
+    return result
