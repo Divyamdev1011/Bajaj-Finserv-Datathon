@@ -1,51 +1,61 @@
-"""
-Pipeline orchestrator connecting preprocessing -> OCR -> extraction -> totals.
-"""
-import os, tempfile
-from pathlib import Path
-from ..preprocessing.image_cleaner import enhance_image
-from ..ocr import textract_extractor, gvision_extractor, tesseract_extractor
-from ..extraction import llm_parser
-from ..totals import total_calculator
-from ..fraud_detection import anomalies
+import fitz  # PyMuPDF
+from ..ocr.textract_extractor import extract_with_textract
+from ..ocr.gvision_extractor import extract_with_gvision
+from ..preprocessing.image_cleaner import preprocess_image
+from ..extraction.llm_parser import extract_items_llm
+from ..utils.pdf_utils import convert_pdf_to_images
+from .schema import ReportResponse, TokenUsage, DataModel, PageLineItems, BillItem
 
-OCR_PROVIDER = os.environ.get('OCR_PROVIDER', 'textract')
+def process_document(file_path: str):
 
-def _is_image(ext: str) -> bool:
-    return ext.lower() in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']
+    pages = convert_pdf_to_images(file_path)
 
-def process_document(file_path: str) -> dict:
-    p = Path(file_path)
-    raw_text = ""
-    fraud_report = None
-    try:
-        if _is_image(p.suffix):
-            tmp = tempfile.NamedTemporaryFile(suffix=p.suffix, delete=False)
-            tmp.close()
-            cleaned = enhance_image(str(p), tmp.name)
-            if OCR_PROVIDER == 'gvision':
-                raw_text = gvision_extractor.extract_text_from_image(cleaned)
-            elif OCR_PROVIDER == 'tesseract':
-                raw_text = tesseract_extractor.extract_text_from_image(cleaned)
-            else:
-                raw_text = textract_extractor.extract_text_from_pdf(cleaned)
-            fraud_report = anomalies.analyze(cleaned)
-        else:
-            if OCR_PROVIDER == 'gvision':
-                raw_text = textract_extractor.extract_text_from_pdf(str(p))
-            elif OCR_PROVIDER == 'tesseract':
-                raw_text = textract_extractor.extract_text_from_pdf(str(p))
-            else:
-                raw_text = textract_extractor.extract_text_from_pdf(str(p))
-    except Exception:
-        raw_text = "ERROR_IN_OCR_FALLBACK\nLine Item A - 100\nLine Item B - 200\nTotal - 300"
+    pagewise_items = []
+    total_token_usage = TokenUsage()
+    total_items = 0
 
-    items = llm_parser.parse_with_llm(raw_text)
-    totals = total_calculator.compute_totals(items)
-    response = {
-        'line_items': totals['line_items'],
-        'calculated_total': totals['calculated_total'],
-        'original_text_snippet': raw_text[:400],
-        'fraud': fraud_report
-    }
-    return response
+    for idx, page_img in enumerate(pages, start=1):
+
+        # Preprocess page
+        cleaned_img = preprocess_image(page_img)
+
+        # OCR
+        text = extract_with_gvision(cleaned_img)
+
+        # LLM parse
+        items, usage = extract_items_llm(text)
+
+        # Update token usage
+        total_token_usage.total_tokens += usage.total_tokens
+        total_token_usage.input_tokens += usage.input_tokens
+        total_token_usage.output_tokens += usage.output_tokens
+
+        # Build response
+        bill_items = [
+            BillItem(
+                item_name=i["item_name"],
+                item_amount=float(i["item_amount"]),
+                item_rate=float(i["item_rate"]),
+                item_quantity=float(i["item_quantity"])
+            )
+            for i in items
+        ]
+
+        page_entry = PageLineItems(
+            page_no=str(idx),
+            page_type="Bill Detail",
+            bill_items=bill_items
+        )
+
+        pagewise_items.append(page_entry)
+        total_items += len(items)
+
+    # Final response
+    return ReportResponse(
+        is_success=True,
+        token_usage=total_token_usage,
+        data=DataModel(
+            pagewise_line_items=pagewise_items,
+            total_item_count=total_items
+        )
+    )
