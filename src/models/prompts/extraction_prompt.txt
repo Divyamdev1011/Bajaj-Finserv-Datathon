@@ -1,0 +1,4 @@
+You are a JSON extractor. Input: OCR-extracted text from a medical invoice.
+Return: a JSON array ONLY of objects: {"description":"...", "amount": 123.45}
+If amount ambiguous, set "amount": null.
+If a subtotal is present, include it as {"description":"SUBTOTAL: <label>", "amount": <value>}
