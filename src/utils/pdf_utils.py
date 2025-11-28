@@ -1,11 +1,12 @@
-from pdf2image import convert_from_path
-import os
-def pdf_to_images(pdf_path, out_dir, dpi=300):
-    os.makedirs(out_dir, exist_ok=True)
-    pages = convert_from_path(pdf_path, dpi=dpi)
-    results = []
-    for i, page in enumerate(pages, 1):
-        p = os.path.join(out_dir, f"{os.path.basename(pdf_path)}_page_{i}.png")
-        page.save(p, 'PNG')
-        results.append(p)
-    return results
+import fitz  # PyMuPDF
+
+def convert_pdf_to_images(pdf_path):
+    doc = fitz.open(pdf_path)
+    images = []
+
+    for page in doc:
+        pix = page.get_pixmap(dpi=300)
+        img_bytes = pix.tobytes("png")
+        images.append(img_bytes)
+
+    return images
