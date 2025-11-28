@@ -1,1 +1,6 @@
+ocr_provider: textract         # textract | gvision | tesseract
+llm_provider: openai           # openai | none
+openai_model: gpt-4o-mini
+temp_dir: data/processed
+pdf2image_dpi: 300
 
