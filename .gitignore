@@ -1,0 +1,10 @@
+__pycache__/
+.env
+credentials.json
+*.pyc
+data/processed/
+.vscode/
+.mypy_cache/
+.venv/
+*.db
+.DS_Store
