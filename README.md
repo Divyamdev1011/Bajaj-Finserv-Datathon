@@ -20,3 +20,28 @@ Quick start:
 
 See docs/ for architecture and pitch deck template.
 
+## Updated According to Official Datathon API
+
+### Endpoint
+POST /extract-bill-data
+
+### Input JSON
+{
+  "document": "<url of bill>"
+}
+
+### Output JSON (Must follow exactly)
+{
+  "is_success": true,
+  "token_usage": {...},
+  "data": {
+    "pagewise_line_items": [...],
+    "total_item_count": 0
+  }
+}
+
+This repository follows the exact datathon structure:
+- Page-wise processing
+- Google Vision OCR
+- LLM-based extraction (item_name, item_amount, item_rate, item_quantity)
+- Token usage tracking
