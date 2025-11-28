@@ -36,19 +36,38 @@ def parse_with_llm(raw_text: str):
                     for item in parsed:
                         if not isinstance(item, dict):
                             continue
-                        desc = item.get('description') or 'UNKNOWN'
-                        amount = item.get('amount')
-                        result.append({'description': desc, 'amount': amount})
+                        # Normalize to pipeline item schema
+                        name = item.get('item_name') or item.get('description') or 'UNKNOWN'
+                        amount = item.get('item_amount') or item.get('amount')
+                        rate = item.get('item_rate') or item.get('rate') or 0.0
+                        quantity = item.get('item_quantity') or item.get('quantity') or 1.0
+                        try:
+                            amount = float(amount) if amount is not None else None
+                        except Exception:
+                            amount = None
+                        try:
+                            rate = float(rate)
+                        except Exception:
+                            rate = 0.0
+                        try:
+                            quantity = float(quantity)
+                        except Exception:
+                            quantity = 1.0
+                        result.append({'item_name': name, 'item_amount': amount, 'item_rate': rate, 'item_quantity': quantity})
                     return result
                 else:
                     logging.warning("LLM returned non-list JSON; fallback to regex")
                     return parse_lines_from_text(raw_text)
             except Exception:
                 logging.warning("Unable to parse LLM JSON; fallback to regex")
-                return parse_lines_from_text(raw_text)
+                # Parse fallback and normalize
+                parsed = parse_lines_from_text(raw_text)
+                return [{'item_name': p.get('description', 'UNKNOWN'), 'item_amount': p.get('amount'), 'item_rate': 0.0, 'item_quantity': 1.0} for p in parsed]
         except Exception:
             logging.exception("LLM call failed; using regex fallback")
-            return parse_lines_from_text(raw_text)
+            parsed = parse_lines_from_text(raw_text)
+            return [{'item_name': p.get('description', 'UNKNOWN'), 'item_amount': p.get('amount'), 'item_rate': 0.0, 'item_quantity': 1.0} for p in parsed]
     else:
         logging.info("OPENAI_API_KEY not set; using regex fallback")
-        return parse_lines_from_text(raw_text)
+        parsed = parse_lines_from_text(raw_text)
+        return [{'item_name': p.get('description', 'UNKNOWN'), 'item_amount': p.get('amount'), 'item_rate': 0.0, 'item_quantity': 1.0} for p in parsed]

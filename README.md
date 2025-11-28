@@ -16,7 +16,7 @@ Quick start:
 2. Add provider credentials (optional)
 3. Run tests: `pytest -q`
 4. Run API: `uvicorn src.api.main:app --reload --port 8000`
-5. POST file(s) to `/extract`.
+5. POST file(s) to `/extract-bill-data`.
 
 See docs/ for architecture and pitch deck template.
 

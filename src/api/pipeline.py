@@ -1,8 +1,7 @@
-import fitz  # PyMuPDF
-from ..ocr.textract_extractor import extract_with_textract
-from ..ocr.gvision_extractor import extract_with_gvision
+from ..orc.textract_extractor import extract_text_from_pdf
+from ..orc.gvision_extractor import extract_with_gvision
 from ..preprocessing.image_cleaner import preprocess_image
-from ..extraction.llm_parser import extract_items_llm
+from ..extraction.llm_parser import parse_with_llm
 from ..utils.pdf_utils import convert_pdf_to_images
 from .schema import ReportResponse, TokenUsage, DataModel, PageLineItems, BillItem
 
@@ -23,7 +22,8 @@ def process_document(file_path: str):
         text = extract_with_gvision(cleaned_img)
 
         # LLM parse
-        items, usage = extract_items_llm(text)
+        items = parse_with_llm(text)
+        usage = TokenUsage()  # LLM token usage not implemented; default to zeros
 
         # Update token usage
         total_token_usage.total_tokens += usage.total_tokens
@@ -31,15 +31,25 @@ def process_document(file_path: str):
         total_token_usage.output_tokens += usage.output_tokens
 
         # Build response
-        bill_items = [
-            BillItem(
-                item_name=i["item_name"],
-                item_amount=float(i["item_amount"]),
-                item_rate=float(i["item_rate"]),
-                item_quantity=float(i["item_quantity"])
-            )
-            for i in items
-        ]
+        bill_items = []
+        for i in items:
+            name = i.get('item_name', i.get('description', 'UNKNOWN'))
+            amt = i.get('item_amount')
+            rate = i.get('item_rate', 0.0)
+            qty = i.get('item_quantity', 1.0)
+            try:
+                amt = float(amt) if amt is not None else 0.0
+            except Exception:
+                amt = 0.0
+            try:
+                rate = float(rate)
+            except Exception:
+                rate = 0.0
+            try:
+                qty = float(qty)
+            except Exception:
+                qty = 1.0
+            bill_items.append(BillItem(item_name=name, item_amount=amt, item_rate=rate, item_quantity=qty))
 
         page_entry = PageLineItems(
             page_no=str(idx),

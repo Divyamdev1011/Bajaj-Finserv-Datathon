@@ -1,6 +1,7 @@
 import os
 import uuid
 import requests
+import tempfile
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -17,26 +18,26 @@ async def extract_bill_data(payload: InputSchema):
 
     url = payload.document
 
-    # Create temp directory
-    tmp_dir = "/tmp/bfhl"
-    os.makedirs(tmp_dir, exist_ok=True)
-
-    # Temporary file path
-    file_path = os.path.join(tmp_dir, str(uuid.uuid4()) + ".pdf")
+    # Create temporary directory for the request; will be cleaned up automatically
+    with tempfile.TemporaryDirectory(prefix="bfhl_") as tmp_dir:
+        # Temporary file path
+        file_path = os.path.join(tmp_dir, str(uuid.uuid4()) + ".pdf")
 
     # Step 1: Download the file
     try:
-        response = requests.get(url)
-        if response.status_code != 200:
-            raise Exception("URL did not return file")
-
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        # Save as a file
         with open(file_path, "wb") as f:
             f.write(response.content)
 
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid document URL")
 
-    # Step 2: Run pipeline
-    result = process_document(file_path)
+        # Step 2: Run pipeline
+        try:
+            result = process_document(file_path)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Processing failed")
 
-    return result
+        return result

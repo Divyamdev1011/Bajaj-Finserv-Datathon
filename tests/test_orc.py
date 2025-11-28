@@ -1,4 +1,4 @@
-from src.ocr.tesseract_extractor import extract_text_from_image
+from src.orc.tesseract_extractor import extract_text_from_image
 def test_tesseract_runs():
     # Not a functional OCR test; ensures function exists.
     try:
