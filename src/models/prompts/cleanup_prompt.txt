@@ -1,0 +1,2 @@
+Clean and normalize descriptions: remove extra whitespace, join broken lines, and remove page headers/footers.
+Return the cleaned text only.
