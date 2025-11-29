@@ -20,20 +20,28 @@ async def extract_bill_data(payload: InputSchema):
 
     url = payload.document
 
-    # Step 1: Create a temporary directory that persists through processing
+    # Step 1: Create a temporary directory for this file
     tmp_dir = tempfile.mkdtemp(prefix="bfhl_")
 
-    # Detect file extension from URL
-    ext = url.split("?")[0].split(".")[-1].lower()
+    # --- FIX: Safe extension handling ---
+    clean_url = url.split("?")[0]
+    filename = os.path.basename(clean_url)
 
+    # Extract extension safely
+    if "." in filename:
+        ext = filename.split(".")[-1].lower()
+    else:
+        ext = "pdf"   # Fallback
+
+    # Accept only supported image/PDF types, fallback to PDF
     if ext not in ["pdf", "png", "jpg", "jpeg"]:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+        ext = "pdf"
 
     file_path = os.path.join(tmp_dir, f"{uuid.uuid4()}.{ext}")
 
     # Step 2: Download file
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, timeout=20)
         response.raise_for_status()
 
         with open(file_path, "wb") as f:
@@ -41,7 +49,7 @@ async def extract_bill_data(payload: InputSchema):
 
     except Exception as e:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Failed to download file: {str(e)}"
         )
 
