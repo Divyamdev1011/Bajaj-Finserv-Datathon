@@ -3,7 +3,7 @@ from PIL import Image
 import numpy as np
 
 # FIX: your folder is "ocr", not "orc"
-from ..ocr.gvision_extractor import extract_with_gvision
+from ..orc.gvision_extractor import extract_with_gvision
 from ..preprocessing.image_cleaner import preprocess_image
 from ..extraction.llm_parser import parse_with_llm
 from ..utils.pdf_utils import convert_pdf_to_images
