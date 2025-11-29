@@ -13,3 +13,4 @@ pdf2image
 pytest
 requests
 PyMuPDF
+google-generativeai>=0.7.0
