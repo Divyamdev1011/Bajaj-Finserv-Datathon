@@ -2,8 +2,11 @@ import io
 from PIL import Image
 import numpy as np
 
-# FIX: your folder is "ocr", not "orc"
+# Correct folder name is "ocr"
 from ..orc.gvision_extractor import extract_with_gvision
+from ..orc.tesseract_extractor import extract_text_from_image
+from ..orc.textract_extractor import extract_text_from_pdf
+
 from ..preprocessing.image_cleaner import preprocess_image
 from ..extraction.llm_parser import parse_with_llm
 from ..utils.pdf_utils import convert_pdf_to_images
@@ -19,46 +22,64 @@ def load_image_bytes_to_cv2(img_bytes: bytes):
 
 def process_document(file_path: str):
 
-    # Returns list of PNG/JPG bytes → 1 per page
+    # PDF → list of PNG images (bytes)
     pages = convert_pdf_to_images(file_path)
 
     pagewise_items = []
     total_token_usage = TokenUsage()
     total_items = 0
 
+    print("DEBUG: Pages detected =", len(pages))
+
     for idx, page_img_bytes in enumerate(pages, start=1):
 
         # Convert bytes → numpy image
         cv2_img = load_image_bytes_to_cv2(page_img_bytes)
 
-        # Preprocess image (resize, denoise, threshold etc.)
+        # Preprocess (resize, threshold, denoise etc.)
         cleaned_img = preprocess_image(cv2_img)
 
-        # Convert cleaned image back to PNG bytes for OCR
+        # Convert cleaned image back to PNG bytes
         pil_img = Image.fromarray(cleaned_img)
         buf = io.BytesIO()
         pil_img.save(buf, format="PNG")
         cleaned_bytes = buf.getvalue()
 
-        # OCR extraction
+        # ------------------------------------------------
+        # 🔵 PRIMARY OCR → Google Vision
+        # ------------------------------------------------
         text = extract_with_gvision(cleaned_bytes)
 
-        if not text:
-            text = ""
+        # ------------------------------------------------
+        # 🟡 FALLBACK 1 → Tesseract
+        # ------------------------------------------------
+        if not text or text.strip() == "":
+            print(f"DEBUG: Page {idx}: Vision empty → using Tesseract")
+            text = extract_text_from_image(cleaned_bytes)
 
-        # Gemini Flash 2.0 extraction
+        # ------------------------------------------------
+        # 🔴 FALLBACK 2 → AWS Textract (returns dummy if unconfigured)
+        # ------------------------------------------------
+        if not text or text.strip() == "":
+            print(f"DEBUG: Page {idx}: Tesseract empty → using Textract fallback")
+            text = extract_text_from_pdf(file_path)
+
+        print(f"DEBUG OCR TEXT (page {idx}):", text[:200])
+
+        # ------------------------------------------------
+        # LLM STRUCTURED EXTRACTION (Gemini Flash 2.0)
+        # ------------------------------------------------
         try:
             items = parse_with_llm(text) or []
         except Exception as e:
             print("LLM parse error:", e)
             items = []
 
-        # Build bill items for that page
+        # Convert structured outputs to objects
         bill_items = []
         for i in items:
             name = i.get("item_name", "UNKNOWN")
 
-            # Convert safely
             try:
                 amt = float(i.get("item_amount", 0) or 0)
             except:
@@ -83,7 +104,7 @@ def process_document(file_path: str):
                 )
             )
 
-        # Create one entry per page
+        # Add 1 page record
         page_entry = PageLineItems(
             page_no=str(idx),
             page_type="Bill Detail",
@@ -93,7 +114,9 @@ def process_document(file_path: str):
         pagewise_items.append(page_entry)
         total_items += len(bill_items)
 
-    # Final JSON response structure
+    # ------------------------------------------------
+    # FINAL RESPONSE MODEL
+    # ------------------------------------------------
     return ReportResponse(
         is_success=True,
         token_usage=total_token_usage,
